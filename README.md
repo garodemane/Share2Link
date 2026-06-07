@@ -10,7 +10,6 @@
 - **Floating Pop-up Browser**: View results instantly without leaving your current app. The pop-up is fully resizable and draggable.
 - **Multi-Tab Browsing**: Turn on Multi-Tab mode to instantly search your shared text across *all* your saved links simultaneously in a tabbed view! State is preserved between tabs.
 - **Drag-and-Drop Priorities**: Reorder your links effortlessly with a long-press. Your priority list reflects directly in your sharing pop-up.
-- **Haptic Feedback**: Enjoy a smooth user experience with subtle vibration feedback during interactions.
 
 ## 🛠️ How to Use
 
@@ -33,7 +32,6 @@
 - **مرورگر شناور (Pop-up)**: نتایج را در یک پنجره شناور و شفاف ببینید. این پنجره قابلیت تغییر اندازه و جابه‌جایی روی صفحه را دارد و اندازه آن در حافظه می‌ماند.
 - **حالت مالتی-تب (Multi-Tab)**: با روشن کردن این قابلیت در تنظیمات، متن شما به صورت همزمان در تمام سایت‌هایی که ذخیره کرده‌اید جستجو شده و در تب‌های جداگانه داخل پاپ‌آپ باز می‌شود.
 - **اولویت‌بندی با کشیدن و رها کردن (Drag & Drop)**: در محیط برنامه با نگه داشتن انگشت روی لینک‌ها (Long Press)، می‌توانید اولویت آن‌ها را جابه‌جا کنید.
-- **بازخورد لرزشی (Haptic Feedback)**: لرزش‌های ظریف و استاندارد برای تجربه کاربری لذت‌بخش‌تر.
 
 ## 🛠️ نحوه استفاده
 
