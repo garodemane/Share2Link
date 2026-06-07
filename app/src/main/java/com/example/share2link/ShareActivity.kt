@@ -91,12 +91,25 @@ class ShareActivity : ComponentActivity() {
                     }
                 }
 
+                val configuration = LocalConfiguration.current
+                val screenWidth = configuration.screenWidthDp.toFloat()
+                val screenHeight = configuration.screenHeightDp.toFloat()
+
+                var widthDp by remember { mutableStateOf(repository.getPopupWidth()) }
+                var heightDp by remember { mutableStateOf(repository.getPopupHeight()) }
+                var offsetX by remember { mutableStateOf(repository.getPopupOffsetX()) }
+                var offsetY by remember { mutableStateOf(repository.getPopupOffsetY()) }
+
                 Surface(
                     color = Color.Transparent, 
                     modifier = Modifier.fillMaxSize().clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
-                        onClick = { moveTaskToBack(true) }
+                        onClick = { 
+                            repository.savePopupSize(widthDp, heightDp)
+                            repository.savePopupOffset(offsetX, offsetY)
+                            moveTaskToBack(true) 
+                        }
                     )
                 ) {
                     if (targetUrls == null) {
@@ -119,15 +132,6 @@ class ShareActivity : ComponentActivity() {
                         }
                     } else {
                         // Resizable, Draggable In-App WebView Popup
-                        val configuration = LocalConfiguration.current
-                        val screenWidth = configuration.screenWidthDp.toFloat()
-                        val screenHeight = configuration.screenHeightDp.toFloat()
-
-                        var widthDp by remember { mutableStateOf(repository.getPopupWidth()) }
-                        var heightDp by remember { mutableStateOf(repository.getPopupHeight()) }
-                        var offsetX by remember { mutableStateOf(repository.getPopupOffsetX()) }
-                        var offsetY by remember { mutableStateOf(repository.getPopupOffsetY()) }
-
                         // Initial centering if offset is 0,0
                         LaunchedEffect(Unit) {
                             if (offsetX == 0f && offsetY == 0f) {
@@ -248,6 +252,7 @@ class ShareActivity : ComponentActivity() {
                                             modifier = Modifier
                                                 .align(Alignment.BottomEnd)
                                                 .size(36.dp)
+                                                .zIndex(2f)
                                                 .background(
                                                     MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), 
                                                     RoundedCornerShape(topStart = 16.dp, bottomEnd = 16.dp)
