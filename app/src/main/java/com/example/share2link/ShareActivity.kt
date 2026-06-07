@@ -13,6 +13,7 @@ import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -20,17 +21,19 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
 import com.example.share2link.data.LinkModel
 import com.example.share2link.data.LinkRepository
 import com.example.share2link.theme.Share2LinkTheme
@@ -40,49 +43,60 @@ import java.nio.charset.StandardCharsets
 
 class ShareActivity : ComponentActivity() {
     private lateinit var repository: LinkRepository
-    private var hasOpenedBrowser = false
+    private var sharedTextState = mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         repository = LinkRepository(this)
         
-        var sharedText: String? = null
-        if (intent?.action == Intent.ACTION_SEND && intent.type == "text/plain") {
-            sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
-        } else if (intent?.action == Intent.ACTION_PROCESS_TEXT && intent.type == "text/plain") {
-            sharedText = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
-        }
-
-        if (sharedText.isNullOrBlank()) {
-            Toast.makeText(this, "متنی یافت نشد", Toast.LENGTH_SHORT).show()
-            finish()
-            return
-        }
+        handleIntent(intent)
 
         setContent {
             Share2LinkTheme {
                 val links = repository.getLinks()
                 val isMultiTab = repository.isMultiTabEnabled()
+                val sharedText = sharedTextState.value
+                
+                var openedLinks by remember { mutableStateOf<List<LinkModel>?>(null) }
                 var targetUrls by remember { mutableStateOf<List<String>?>(null) }
+                
+                BackHandler {
+                    moveTaskToBack(true)
+                }
 
-                LaunchedEffect(sharedText) {
-                    if (isMultiTab && targetUrls == null) {
-                        if (repository.isPopupEnabled()) {
-                            targetUrls = links.map { generateUrl(sharedText!!, it, showToast = false) }
-                        } else {
-                            // If multi-tab is enabled but popup is disabled, we open external browsers for all.
-                            // This might be chaotic but follows the logic.
-                            links.forEach { openExternalBrowser(generateUrl(sharedText!!, it, showToast = false)) }
-                            finish()
-                        }
+                LaunchedEffect(sharedText, isMultiTab) {
+                    if (sharedText.isNullOrBlank()) return@LaunchedEffect
+                    if (isMultiTab && openedLinks == null) {
+                        openedLinks = links
                     }
                 }
+
+                LaunchedEffect(sharedText, openedLinks) {
+                    if (sharedText.isNullOrBlank() || openedLinks == null) return@LaunchedEffect
+                    
+                    var copiedToClipboard = false
+                    val newUrls = openedLinks!!.map { link ->
+                        if (!link.urlTemplate.contains("%s")) copiedToClipboard = true
+                        generateUrl(sharedText, link, showToast = false)
+                    }
+                    if (copiedToClipboard) {
+                        Toast.makeText(this@ShareActivity, "متن کپی شد! در صفحه باز شده آن را Paste کنید.", Toast.LENGTH_LONG).show()
+                    }
+                    
+                    if (repository.isPopupEnabled()) {
+                        targetUrls = newUrls
+                    } else {
+                        newUrls.forEach { openExternalBrowser(it) }
+                        moveTaskToBack(true)
+                    }
+                }
+
                 Surface(
                     color = Color.Transparent, 
                     modifier = Modifier.fillMaxSize().clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
-                        onClick = { finish() }
+                        onClick = { moveTaskToBack(true) }
                     )
                 ) {
                     if (targetUrls == null) {
@@ -93,20 +107,14 @@ class ShareActivity : ComponentActivity() {
                                 indication = null,
                                 onClick = {}
                             )) {
-                            IntentHandlerScreen(
-                                text = sharedText,
-                                repository = repository,
-                                onLinkSelected = { linkModel ->
-                                    val url = generateUrl(sharedText!!, linkModel, showToast = true)
-                                    if (repository.isPopupEnabled()) {
-                                        targetUrls = listOf(url)
-                                    } else {
-                                        openExternalBrowser(url)
-                                        finish()
-                                    }
-                                },
-                                onCancel = { finish() }
-                            )
+                                IntentHandlerScreen(
+                                    text = sharedText ?: "",
+                                    repository = repository,
+                                    onLinkSelected = { linkModel ->
+                                        openedLinks = listOf(linkModel)
+                                    },
+                                    onCancel = { moveTaskToBack(true) }
+                                )
                             }
                         }
                     } else {
@@ -143,11 +151,14 @@ class ShareActivity : ComponentActivity() {
                                 color = MaterialTheme.colorScheme.background
                             ) {
                                 Column(modifier = Modifier.fillMaxSize()) {
+                                    var selectedTabIndex by remember { mutableStateOf(0) }
+                                    val webViews = remember { mutableStateMapOf<Int, WebView>() }
+
                                     // Drag handle area (Top Pill)
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .height(24.dp)
+                                            .height(36.dp)
                                             .pointerInput(Unit) {
                                                 detectDragGestures(
                                                     onDragEnd = { repository.savePopupOffset(offsetX, offsetY) }
@@ -156,18 +167,27 @@ class ShareActivity : ComponentActivity() {
                                                     offsetX += dragAmount.x.toDp().value
                                                     offsetY += dragAmount.y.toDp().value
                                                 }
-                                            },
-                                        contentAlignment = Alignment.Center
+                                            }
                                     ) {
                                         Box(
                                             modifier = Modifier
                                                 .width(40.dp)
                                                 .height(5.dp)
+                                                .align(Alignment.Center)
                                                 .background(Color.Gray.copy(alpha = 0.6f), RoundedCornerShape(2.5.dp))
                                         )
+                                        
+                                        IconButton(
+                                            onClick = { webViews[selectedTabIndex]?.reload() },
+                                            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 8.dp).size(28.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Refresh,
+                                                contentDescription = "Refresh",
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                     }
-                                    
-                                    var selectedTabIndex by remember { mutableStateOf(0) }
                                     if (targetUrls!!.size > 1) {
                                         ScrollableTabRow(
                                             selectedTabIndex = selectedTabIndex,
@@ -176,7 +196,7 @@ class ShareActivity : ComponentActivity() {
                                             modifier = Modifier.height(48.dp)
                                         ) {
                                             targetUrls!!.forEachIndexed { index, _ ->
-                                                val linkName = links.getOrNull(index)?.name ?: "Tab ${index+1}"
+                                                val linkName = openedLinks?.getOrNull(index)?.name ?: "Tab ${index+1}"
                                                 Tab(
                                                     selected = selectedTabIndex == index,
                                                     onClick = { selectedTabIndex = index },
@@ -195,24 +215,31 @@ class ShareActivity : ComponentActivity() {
                                                     .alpha(if (isVisible) 1f else 0f)
                                                     .zIndex(if (isVisible) 1f else 0f)
                                             ) {
-                                        AndroidView(
-                                            modifier = Modifier.fillMaxSize(),
-                                            factory = { context ->
-                                                WebView(context).apply {
-                                                    layoutParams = ViewGroup.LayoutParams(
-                                                        ViewGroup.LayoutParams.MATCH_PARENT,
-                                                        ViewGroup.LayoutParams.MATCH_PARENT
-                                                    )
-                                                    settings.javaScriptEnabled = true
-                                                    settings.domStorageEnabled = true
-                                                    settings.userAgentString = settings.userAgentString.replace("; wv", "")
-                                                    CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                                                    webViewClient = WebViewClient()
-                                                    loadUrl(url)
-                                                }
-                                            },
-                                            update = { /* Do not reload on every recomposition */ }
-                                        )
+                                                AndroidView(
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    factory = { context ->
+                                                        WebView(context).apply {
+                                                            webViews[index] = this
+                                                            layoutParams = ViewGroup.LayoutParams(
+                                                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                                                ViewGroup.LayoutParams.MATCH_PARENT
+                                                            )
+                                                            settings.javaScriptEnabled = true
+                                                            settings.domStorageEnabled = true
+                                                            settings.userAgentString = settings.userAgentString.replace("; wv", "")
+                                                            CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                                                            webViewClient = WebViewClient()
+                                                            loadUrl(url)
+                                                            tag = url
+                                                        }
+                                                    },
+                                                    update = { webView ->
+                                                        if (webView.tag != url) {
+                                                            webView.loadUrl(url)
+                                                            webView.tag = url
+                                                        }
+                                                    }
+                                                )
                                             }
                                         }
                                         
@@ -246,6 +273,29 @@ class ShareActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        var text: String? = null
+        if (intent?.action == Intent.ACTION_SEND && intent.type == "text/plain") {
+            text = intent.getStringExtra(Intent.EXTRA_TEXT)
+        } else if (intent?.action == Intent.ACTION_PROCESS_TEXT && intent.type == "text/plain") {
+            text = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
+        }
+
+        if (text.isNullOrBlank()) {
+            Toast.makeText(this, "متنی یافت نشد", Toast.LENGTH_SHORT).show()
+            moveTaskToBack(true)
+            return
+        }
+        
+        sharedTextState.value = text
     }
 
     private fun generateUrl(text: String, linkModel: LinkModel, showToast: Boolean): String {
