@@ -26,6 +26,7 @@
             android:launchMode="singleTask"
             android:excludeFromRecents="true"
             android:taskAffinity=""
+            android:hardwareAccelerated="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />

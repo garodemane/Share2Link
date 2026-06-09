@@ -112,4 +112,19 @@ class LinkRepository(context: Context) {
     fun savePopupOffset(x: Float, y: Float) {
         prefs.edit().putFloat("popup_offset_x", x).putFloat("popup_offset_y", y).apply()
     }
+
+    /**
+     * Saves the last URL visited in the WebView for a clipboard-type link (no %s).
+     * This allows the popup to resume from the last page the user was on.
+     */
+    fun saveLastWebViewUrl(linkId: String, url: String) {
+        prefs.edit().putString("last_url_$linkId", url).apply()
+    }
+
+    /**
+     * Returns the last URL visited for a clipboard-type link, or null if never visited.
+     */
+    fun getLastWebViewUrl(linkId: String): String? {
+        return prefs.getString("last_url_$linkId", null)
+    }
 }
