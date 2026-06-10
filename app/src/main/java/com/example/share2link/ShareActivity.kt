@@ -36,6 +36,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.platform.LocalDensity
+import androidx.core.view.WindowCompat
 import com.example.share2link.data.LinkModel
 import com.example.share2link.data.LinkRepository
 import com.example.share2link.theme.Share2LinkTheme
@@ -54,6 +56,11 @@ class ShareActivity : ComponentActivity() {
         // Use applicationContext so the repository (and any closures capturing it)
         // do not hold a reference to this Activity instance.
         repository = LinkRepository(applicationContext)
+
+        // Allow Compose to receive keyboard (IME) insets even in a translucent
+        // full-screen window. Without this, the keyboard overlays content with
+        // no way for WebView to scroll the focused input into view.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
 
         // If the user has changed their link list while multi-tab was active,
         // the cached WebViews belong to a stale set — discard them.
@@ -107,6 +114,24 @@ class ShareActivity : ComponentActivity() {
                 var heightDp by remember { mutableStateOf(repository.getPopupHeight()) }
                 var offsetX  by remember { mutableStateOf(repository.getPopupOffsetX()) }
                 var offsetY  by remember { mutableStateOf(repository.getPopupOffsetY()) }
+
+                // ── Keyboard-reactive popup height ────────────────────────────────
+                // When the soft keyboard opens over a translucent full-screen window,
+                // adjustResize alone doesn't resize the window.  Instead we:
+                //   1. Read the IME bottom inset from Compose (enabled by
+                //      WindowCompat.setDecorFitsSystemWindows(false) in onCreate)
+                //   2. Calculate how much the keyboard overlaps this popup
+                //   3. Shrink effectiveHeightDp by that overlap so the WebView
+                //      scrolls the focused input field into view automatically
+                val density = LocalDensity.current
+                val imeBottomPx = WindowInsets.ime.getBottom(density)
+                val keyboardDp  = with(density) { imeBottomPx.toDp().value }
+                val effectiveHeightDp = if (keyboardDp > 0f) {
+                    val popupBottomDp  = offsetY + heightDp
+                    val visibleBottomDp = screenHeight - keyboardDp
+                    val overlap = popupBottomDp - visibleBottomDp
+                    if (overlap > 0f) (heightDp - overlap).coerceAtLeast(150f) else heightDp
+                } else heightDp
 
                 // ── Back button: navigate within WebView first, then close ────────
                 BackHandler {
@@ -256,7 +281,7 @@ class ShareActivity : ComponentActivity() {
                             Surface(
                                 modifier = Modifier
                                     .offset { IntOffset(offsetX.dp.roundToPx(), offsetY.dp.roundToPx()) }
-                                    .size(widthDp.dp, heightDp.dp)
+                                    .size(widthDp.dp, effectiveHeightDp.dp)
                                     .clickable(
                                         interactionSource = remember { MutableInteractionSource() },
                                         indication = null,
@@ -296,9 +321,25 @@ class ShareActivity : ComponentActivity() {
                                                 )
                                         )
                                         IconButton(
-                                            onClick = { 
-                                                val originalUrl = targetUrls?.getOrNull(selectedTabIndex)
-                                                if (originalUrl != null) webViewRefs[selectedTabIndex]?.loadUrl(originalUrl)
+                                            onClick = {
+                                                // Navigate to the ORIGINAL registered URL, not the
+                                                // current page (i.e. not window.location.reload()).
+                                                // Clipboard links → base URL as typed in the app.
+                                                // Search links    → search URL with current text.
+                                                val link = openedLinks?.getOrNull(selectedTabIndex)
+                                                val wv   = webViewRefs[selectedTabIndex]
+                                                if (link != null && wv != null) {
+                                                    val refreshUrl = if (link.urlTemplate.contains("%s")) {
+                                                        // Re-use the computed search URL
+                                                        targetUrls?.getOrNull(selectedTabIndex)
+                                                            ?: link.urlTemplate
+                                                    } else {
+                                                        // Return to the base URL as registered
+                                                        link.urlTemplate
+                                                    }
+                                                    wv.loadUrl(refreshUrl)
+                                                    wv.tag = refreshUrl
+                                                }
                                             },
                                             modifier = Modifier
                                                 .align(Alignment.CenterEnd)
