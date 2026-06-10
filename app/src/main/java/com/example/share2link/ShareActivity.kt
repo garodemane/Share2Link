@@ -296,7 +296,10 @@ class ShareActivity : ComponentActivity() {
                                                 )
                                         )
                                         IconButton(
-                                            onClick = { webViewRefs[selectedTabIndex]?.reload() },
+                                            onClick = { 
+                                                val originalUrl = targetUrls?.getOrNull(selectedTabIndex)
+                                                if (originalUrl != null) webViewRefs[selectedTabIndex]?.loadUrl(originalUrl)
+                                            },
                                             modifier = Modifier
                                                 .align(Alignment.CenterEnd)
                                                 .padding(end = 8.dp)
