@@ -6,7 +6,7 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Deep Modern Gradient Base -->
+    <!-- Deep Modern Gradient Base (Rich Indigo to Violet) -->
     <path android:pathData="M0,0h108v108h-108z">
         <aapt:attr name="android:fillColor">
             <gradient
@@ -15,32 +15,21 @@
                 android:endX="108"
                 android:endY="108"
                 android:type="linear">
-                <item android:offset="0.0" android:color="#2A206A" />
-                <item android:offset="0.5" android:color="#3B2D85" />
-                <item android:offset="1.0" android:color="#14112E" />
+                <item android:offset="0.0" android:color="#4338CA" />
+                <item android:offset="0.5" android:color="#312E81" />
+                <item android:offset="1.0" android:color="#1E1B4B" />
             </gradient>
         </aapt:attr>
     </path>
 
-    <!-- Concentric Decorative Circles / Tech Glow -->
-    <path
-        android:pathData="M54,54m-46,0a46,46 0,1 1,92 0a46,46 0,1 1,-92 0"
-        android:strokeWidth="1"
-        android:strokeColor="#306366F1" />
-
-    <path
-        android:pathData="M54,54m-38,0a38,38 0,1 1,76 0a38,38 0,1 1,-76 0"
-        android:strokeWidth="0.8"
-        android:strokeColor="#2538BDF8" />
-
-    <!-- Soft Center Glow -->
-    <path android:pathData="M54,54m-28,0a28,28 0,1 1,56 0a28,28 0,1 1,-56 0">
+    <!-- Soft Ambient Center Glow -->
+    <path android:pathData="M54,54m-38,0a38,38 0,1 1,76 0a38,38 0,1 1,-76 0">
         <aapt:attr name="android:fillColor">
             <gradient
                 android:startX="54"
-                android:startY="26"
+                android:startY="16"
                 android:endX="54"
-                android:endY="82"
+                android:endY="92"
                 android:type="linear">
                 <item android:offset="0.0" android:color="#33818CF8" />
                 <item android:offset="1.0" android:color="#001E1B4B" />

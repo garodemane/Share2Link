@@ -6,17 +6,15 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.provider.Settings
+import android.view.Gravity
 import android.view.ViewGroup
-import android.webkit.CookieManager
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceRequest
+import android.view.WindowManager
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -36,11 +34,11 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
-import androidx.compose.ui.platform.LocalDensity
 import androidx.core.view.WindowCompat
 import com.example.share2link.data.LinkModel
 import com.example.share2link.data.LinkRepository
@@ -55,19 +53,40 @@ class ShareActivity : ComponentActivity() {
     private var sharedTextState = mutableStateOf<String?>(null)
     private var lastHandledText: String? = null
 
+    private fun applyWindowBounds(
+        isLocked: Boolean,
+        xDp: Float,
+        yDp: Float,
+        wDp: Float,
+        hDp: Float,
+        density: Float
+    ) {
+        val lp = window.attributes
+        if (isLocked) {
+            lp.gravity = Gravity.TOP or Gravity.START
+            lp.x = (xDp * density).toInt()
+            lp.y = (yDp * density).toInt()
+            lp.width = (wDp * density).toInt()
+            lp.height = (hDp * density).toInt()
+            lp.flags = lp.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+        } else {
+            lp.gravity = Gravity.TOP or Gravity.START
+            lp.x = 0
+            lp.y = 0
+            lp.width = WindowManager.LayoutParams.MATCH_PARENT
+            lp.height = WindowManager.LayoutParams.MATCH_PARENT
+            lp.flags = lp.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL.inv()
+        }
+        window.attributes = lp
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Use applicationContext so the repository (and any closures capturing it)
-        // do not hold a reference to this Activity instance.
         repository = LinkRepository(applicationContext)
 
-        // Allow Compose to receive keyboard (IME) insets even in a translucent
-        // full-screen window. Without this, the keyboard overlays content with
-        // no way for WebView to scroll the focused input into view.
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
 
-        // If the user has changed their link list while multi-tab was active,
-        // the cached WebViews belong to a stale set — discard them.
         if (repository.isMultiTabEnabled() && PopupWebViewCache.hasValidCache()) {
             val currentIds = repository.getLinks().map { it.id }.toSet()
             val cachedIds  = PopupWebViewCache.openedLinks?.map { it.id }?.toSet()
@@ -76,30 +95,13 @@ class ShareActivity : ComponentActivity() {
 
         handleIntent(intent)
 
-        // If locked mode is enabled and overlay permission is granted, launch true floating overlay
-        if (!repository.isDismissOnTapOutsideEnabled() && Settings.canDrawOverlays(this)) {
-            val text = sharedTextState.value
-            FloatingOverlayService.start(this, text)
-            finish()
-            return
-        }
-
         setContent {
             Share2LinkTheme {
                 val allLinks    = repository.getLinks()
                 val isMultiTab  = repository.isMultiTabEnabled()
                 val sharedText  = sharedTextState.value
 
-                // ── Decide whether to restore from the WebView cache ──────────────
-                // The cache survives Activity.finish() because WebViews live in the
-                // PopupWebViewCache singleton (process-scoped).  When onCreate() is
-                // called again (next share), we pull the WebViews back, detach them
-                // from any stale parent, and reattach to the new view hierarchy —
-                // DOM / JS / scroll / session are all preserved.
                 val cacheValid = remember { PopupWebViewCache.hasValidCache() }
-
-                // Stable WebView reference map — kept at the top level so
-                // BackHandler (defined here) can trigger reload/goBack.
                 val webViewRefs = remember { mutableStateMapOf<Int, WebView>() }
 
                 var openedLinks by remember {
@@ -114,7 +116,6 @@ class ShareActivity : ComponentActivity() {
                 }
                 var popupAlreadyOpen by remember { mutableStateOf(cacheValid) }
 
-                // Restore last selected tab when returning from cache.
                 var selectedTabIndex by remember {
                     mutableStateOf(if (cacheValid) PopupWebViewCache.selectedTabIndex else 0)
                 }
@@ -122,35 +123,52 @@ class ShareActivity : ComponentActivity() {
                 val configuration = LocalConfiguration.current
                 val screenWidth  = configuration.screenWidthDp.toFloat()
                 val screenHeight = configuration.screenHeightDp.toFloat()
-                var widthDp  by remember { mutableStateOf(repository.getPopupWidth()) }
-                var heightDp by remember { mutableStateOf(repository.getPopupHeight()) }
-                var offsetX  by remember { mutableStateOf(repository.getPopupOffsetX()) }
-                var offsetY  by remember { mutableStateOf(repository.getPopupOffsetY()) }
 
-                // ── Dismiss-on-tap-outside toggle ─────────────────────────────
+                var widthDp  by remember {
+                    mutableStateOf(repository.getPopupWidth().coerceIn(200f, screenWidth))
+                }
+                var heightDp by remember {
+                    mutableStateOf(repository.getPopupHeight().coerceIn(200f, screenHeight))
+                }
+                var offsetX  by remember {
+                    val savedX = repository.getPopupOffsetX()
+                    mutableStateOf(
+                        if (savedX <= 0f) ((screenWidth - widthDp) / 2f).coerceAtLeast(0f)
+                        else savedX.coerceIn(0f, (screenWidth - widthDp).coerceAtLeast(0f))
+                    )
+                }
+                var offsetY  by remember {
+                    val savedY = repository.getPopupOffsetY()
+                    mutableStateOf(
+                        if (savedY <= 0f) ((screenHeight - heightDp) / 2f).coerceAtLeast(0f)
+                        else savedY.coerceIn(0f, (screenHeight - heightDp).coerceAtLeast(0f))
+                    )
+                }
+
                 var dismissOnTapOutside by remember {
                     mutableStateOf(repository.isDismissOnTapOutsideEnabled())
                 }
 
-                // ── Keyboard-reactive popup height ────────────────────────────────
-                // When the soft keyboard opens over a translucent full-screen window,
-                // adjustResize alone doesn't resize the window.  Instead we:
-                //   1. Read the IME bottom inset from Compose (enabled by
-                //      WindowCompat.setDecorFitsSystemWindows(false) in onCreate)
-                //   2. Calculate how much the keyboard overlaps this popup
-                //   3. Shrink effectiveHeightDp by that overlap so the WebView
-                //      scrolls the focused input field into view automatically
                 val density = LocalDensity.current
+                val densityVal = density.density
                 val imeBottomPx = WindowInsets.ime.getBottom(density)
                 val keyboardDp  = with(density) { imeBottomPx.toDp().value }
                 val effectiveHeightDp = if (keyboardDp > 0f) {
-                    val popupBottomDp  = offsetY + heightDp
+                    val popupBottomDp   = offsetY + heightDp
                     val visibleBottomDp = screenHeight - keyboardDp
-                    val overlap = popupBottomDp - visibleBottomDp
+                    val overlap         = popupBottomDp - visibleBottomDp
                     if (overlap > 0f) (heightDp - overlap).coerceAtLeast(150f) else heightDp
                 } else heightDp
 
-                // ── Back button: navigate within WebView first, then close ────────
+                // Window positioning & touch mode synchronization
+                LaunchedEffect(dismissOnTapOutside, targetUrls, effectiveHeightDp, widthDp, heightDp, offsetX, offsetY) {
+                    if (targetUrls == null) {
+                        applyWindowBounds(false, 0f, 0f, 0f, 0f, densityVal)
+                    } else {
+                        applyWindowBounds(!dismissOnTapOutside, offsetX, offsetY, widthDp, effectiveHeightDp, densityVal)
+                    }
+                }
+
                 BackHandler {
                     val currentWv = webViewRefs[selectedTabIndex]
                     if (currentWv?.canGoBack() == true) {
@@ -159,11 +177,10 @@ class ShareActivity : ComponentActivity() {
                         repository.savePopupSize(widthDp, heightDp)
                         repository.savePopupOffset(offsetX, offsetY)
                         PopupWebViewCache.selectedTabIndex = selectedTabIndex
-                        finish()   // Chrome / caller is unaffected; cache holds our WebViews
+                        finish()
                     }
                 }
 
-                // ── Auto-open all links in multi-tab mode ────────────────────────
                 LaunchedEffect(sharedText, isMultiTab) {
                     if (sharedText.isNullOrBlank()) return@LaunchedEffect
                     if (isMultiTab && openedLinks == null) {
@@ -172,16 +189,12 @@ class ShareActivity : ComponentActivity() {
                     }
                 }
 
-                // ── Core URL logic ───────────────────────────────────────────────
                 LaunchedEffect(sharedText, openedLinks) {
                     if (sharedText.isNullOrBlank() || openedLinks == null) return@LaunchedEffect
 
                     val links = openedLinks!!
 
                     if (popupAlreadyOpen) {
-                        // ── Popup already visible (live session or cache-restored) ──────
-                        // Clipboard links → copy new text; do NOT reload WebView
-                        // Search links   → update URL so WebView reloads with new query
                         val updatedUrls = targetUrls?.toMutableList() ?: return@LaunchedEffect
                         var hasClipboard = false
 
@@ -208,9 +221,6 @@ class ShareActivity : ComponentActivity() {
                         return@LaunchedEffect
                     }
 
-                    // ── First-time opening ───────────────────────────────────────────────
-                    // Clipboard links resume from the last page the user visited (saved in
-                    // prefs by onPageFinished).  Search links encode the shared text.
                     var hasClipboard = false
                     val newUrls = links.map { link ->
                         if (link.urlTemplate.contains("%s")) {
@@ -242,324 +252,359 @@ class ShareActivity : ComponentActivity() {
                     }
                 }
 
-                // ── Transparent full-screen backdrop — tap outside to dismiss ────
-                Surface(
-                    color = Color.Transparent,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = {
-                                if (dismissOnTapOutside) {
-                                    repository.savePopupSize(widthDp, heightDp)
-                                    repository.savePopupOffset(offsetX, offsetY)
-                                    PopupWebViewCache.selectedTabIndex = selectedTabIndex
-                                    finish()   // safe — WebViews stay alive in PopupWebViewCache
+                if (targetUrls == null) {
+                    // Link selection dialog
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.35f))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = {
+                                    PopupWebViewCache.destroy()
+                                    finish()
+                                }
+                            )
+                    ) {
+                        Box(
+                            modifier = Modifier.clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = {}
+                            )
+                        ) {
+                            IntentHandlerScreen(
+                                text = sharedText ?: "",
+                                repository = repository,
+                                onLinkSelected = { linkModel ->
+                                    openedLinks = listOf(linkModel)
+                                    PopupWebViewCache.openedLinks = listOf(linkModel)
+                                },
+                                onCancel = {
+                                    PopupWebViewCache.destroy()
+                                    finish()
+                                }
+                            )
+                        }
+                    }
+                } else {
+                    // Popup Surface Composable
+                    @Composable
+                    fun PopupContent(containerModifier: Modifier) {
+                        Surface(
+                            modifier = containerModifier,
+                            shape = RoundedCornerShape(18.dp),
+                            tonalElevation = 8.dp,
+                            shadowElevation = 12.dp,
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(
+                                1.dp,
+                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+                            )
+                        ) {
+                            Column(modifier = Modifier.fillMaxSize()) {
+
+                                // Modern Header Bar
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(44.dp)
+                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f))
+                                        .pointerInput(Unit) {
+                                            detectDragGestures(
+                                                onDragEnd = {
+                                                    repository.savePopupOffset(offsetX, offsetY)
+                                                }
+                                            ) { change, dragAmount ->
+                                                change.consume()
+                                                val newX = (offsetX + dragAmount.x.toDp().value).coerceIn(0f, (screenWidth - widthDp).coerceAtLeast(0f))
+                                                val newY = (offsetY + dragAmount.y.toDp().value).coerceIn(0f, (screenHeight - effectiveHeightDp).coerceAtLeast(0f))
+                                                offsetX = newX
+                                                offsetY = newY
+                                                if (!dismissOnTapOutside) {
+                                                    val lp = window.attributes
+                                                    lp.x = (newX * densityVal).toInt()
+                                                    lp.y = (newY * densityVal).toInt()
+                                                    window.attributes = lp
+                                                }
+                                            }
+                                        }
+                                ) {
+                                    // Left: Lock toggle & Close buttons
+                                    Row(
+                                        modifier = Modifier
+                                            .align(Alignment.CenterStart)
+                                            .padding(start = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        IconButton(
+                                            onClick = {
+                                                val newDismiss = !dismissOnTapOutside
+                                                dismissOnTapOutside = newDismiss
+                                                repository.setDismissOnTapOutside(newDismiss)
+                                                val msg = if (newDismiss) {
+                                                    "حالت عادی: با کلیک بیرون، پاپ‌آپ بسته می‌شود"
+                                                } else {
+                                                    "حالت قفل: پاپ‌آپ ثابت می‌ماند و می‌توانید با برنامه‌های زیرین کار کنید"
+                                                }
+                                                Toast.makeText(this@ShareActivity, msg, Toast.LENGTH_SHORT).show()
+                                            },
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .background(
+                                                    if (!dismissOnTapOutside) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                                    RoundedCornerShape(8.dp)
+                                                )
+                                        ) {
+                                            Icon(
+                                                imageVector = if (dismissOnTapOutside)
+                                                    Icons.Default.LockOpen
+                                                else
+                                                    Icons.Default.Lock,
+                                                contentDescription = if (dismissOnTapOutside)
+                                                    "بستن با کلیک خارج: فعال"
+                                                else
+                                                    "بستن با کلیک خارج: غیرفعال",
+                                                tint = if (dismissOnTapOutside)
+                                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                                else
+                                                    MaterialTheme.colorScheme.onPrimaryContainer,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        IconButton(
+                                            onClick = {
+                                                repository.savePopupSize(widthDp, heightDp)
+                                                repository.savePopupOffset(offsetX, offsetY)
+                                                PopupWebViewCache.selectedTabIndex = selectedTabIndex
+                                                finish()
+                                            },
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .background(
+                                                    MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f),
+                                                    RoundedCornerShape(8.dp)
+                                                )
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Close,
+                                                contentDescription = "Close",
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+
+                                    // Center drag indicator pill
+                                    Box(
+                                        modifier = Modifier
+                                            .width(46.dp)
+                                            .height(5.dp)
+                                            .align(Alignment.Center)
+                                            .background(
+                                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                                                RoundedCornerShape(2.5.dp)
+                                            )
+                                    )
+
+                                    // Right: Refresh button
+                                    IconButton(
+                                        onClick = {
+                                            val link = openedLinks?.getOrNull(selectedTabIndex)
+                                            val wv   = webViewRefs[selectedTabIndex]
+                                            if (link != null && wv != null) {
+                                                val refreshUrl = if (link.urlTemplate.contains("%s")) {
+                                                    targetUrls?.getOrNull(selectedTabIndex)
+                                                        ?: link.urlTemplate
+                                                } else {
+                                                    link.urlTemplate
+                                                }
+                                                wv.loadUrl(refreshUrl)
+                                                wv.tag = refreshUrl
+                                            }
+                                        },
+                                        modifier = Modifier
+                                            .align(Alignment.CenterEnd)
+                                            .padding(end = 8.dp)
+                                            .size(32.dp)
+                                            .background(
+                                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                                RoundedCornerShape(8.dp)
+                                            )
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Refresh,
+                                            contentDescription = "Refresh",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+
+                                Divider(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                    thickness = 0.8.dp
+                                )
+
+                                // Multi-tab tab bar
+                                if (targetUrls!!.size > 1) {
+                                    ScrollableTabRow(
+                                        selectedTabIndex = selectedTabIndex,
+                                        edgePadding = 8.dp,
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                        modifier = Modifier.height(44.dp)
+                                    ) {
+                                        targetUrls!!.forEachIndexed { index, _ ->
+                                            val label = openedLinks?.getOrNull(index)?.name
+                                                ?: "Tab ${index + 1}"
+                                            Tab(
+                                                selected = selectedTabIndex == index,
+                                                onClick = {
+                                                    selectedTabIndex = index
+                                                    PopupWebViewCache.selectedTabIndex = index
+                                                },
+                                                text = {
+                                                    Text(
+                                                        label,
+                                                        style = MaterialTheme.typography.labelMedium
+                                                    )
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // WebView Panes
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxSize()
+                                ) {
+                                    targetUrls!!.forEachIndexed { index, url ->
+                                        val isVisible      = selectedTabIndex == index
+                                        val linkModel      = openedLinks?.getOrNull(index)
+                                        val isClipboard    = linkModel != null &&
+                                                !linkModel.urlTemplate.contains("%s")
+                                        val linkId         = linkModel?.id ?: ""
+
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .alpha(if (isVisible) 1f else 0f)
+                                                .zIndex(if (isVisible) 1f else 0f)
+                                        ) {
+                                            AndroidView(
+                                                modifier = Modifier.fillMaxSize(),
+                                                factory = { ctx ->
+                                                    val cached = PopupWebViewCache.webViews[index]
+                                                    if (cached != null) {
+                                                        (cached.parent as? ViewGroup)?.removeView(cached)
+                                                        webViewRefs[index] = cached
+                                                        cached
+                                                    } else {
+                                                        WebViewHelper.buildWebView(
+                                                            ctx, index, url,
+                                                            isClipboard, linkId, webViewRefs, repository
+                                                        )
+                                                    }
+                                                },
+                                                update = { webView ->
+                                                    webViewRefs[index] = webView
+                                                    if (!isClipboard && webView.tag != url) {
+                                                        webView.loadUrl(url)
+                                                        webView.tag = url
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    }
+
+                                    // Resize handle (bottom-right)
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .size(28.dp)
+                                            .zIndex(2f)
+                                            .background(
+                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
+                                                RoundedCornerShape(topStart = 14.dp, bottomEnd = 18.dp)
+                                            )
+                                            .pointerInput(Unit) {
+                                                detectDragGestures(
+                                                    onDragEnd = {
+                                                        repository.savePopupSize(widthDp, heightDp)
+                                                    }
+                                                ) { change, dragAmount ->
+                                                    change.consume()
+                                                    val newW = (widthDp + dragAmount.x.toDp().value).coerceIn(200f, screenWidth)
+                                                    val newH = (heightDp + dragAmount.y.toDp().value).coerceIn(200f, screenHeight)
+                                                    widthDp  = newW
+                                                    heightDp = newH
+                                                    if (!dismissOnTapOutside) {
+                                                        val lp = window.attributes
+                                                        lp.width = (newW * densityVal).toInt()
+                                                        lp.height = (effectiveHeightDp * densityVal).toInt()
+                                                        window.attributes = lp
+                                                    }
+                                                }
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            "⤡",
+                                            color = MaterialTheme.colorScheme.primary,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                        )
+                                    }
                                 }
                             }
-                        )
-                ) {
-                    if (targetUrls == null) {
-                        // ── Link selection dialog ─────────────────────────────────────────
+                        }
+                    }
+
+                    if (dismissOnTapOutside) {
+                        // Unlocked mode: full screen window with backdrop click dismiss
                         Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            Box(
-                                modifier = Modifier.clickable(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null,
-                                    onClick = {}
-                                )
-                            ) {
-                                IntentHandlerScreen(
-                                    text = sharedText ?: "",
-                                    repository = repository,
-                                    onLinkSelected = { linkModel ->
-                                        openedLinks = listOf(linkModel)
-                                        PopupWebViewCache.openedLinks = listOf(linkModel)
-                                    },
-                                    onCancel = {
-                                        PopupWebViewCache.destroy()
+                                    onClick = {
+                                        repository.savePopupSize(widthDp, heightDp)
+                                        repository.savePopupOffset(offsetX, offsetY)
+                                        PopupWebViewCache.selectedTabIndex = selectedTabIndex
                                         finish()
                                     }
                                 )
-                            }
-                        }
-                    } else {
-                        // ── Resizable, Draggable WebView Popup ───────────────────────────
-                        LaunchedEffect(Unit) {
-                            if (offsetX == 0f && offsetY == 0f) {
-                                offsetX = (screenWidth  - widthDp)  / 2f
-                                offsetY = (screenHeight - heightDp) / 2f
-                            }
-                        }
-
-                        Box(modifier = Modifier.fillMaxSize()) {
-                            Surface(
-                                modifier = Modifier
+                        ) {
+                            PopupContent(
+                                containerModifier = Modifier
                                     .offset { IntOffset(offsetX.dp.roundToPx(), offsetY.dp.roundToPx()) }
                                     .size(widthDp.dp, effectiveHeightDp.dp)
                                     .clickable(
                                         interactionSource = remember { MutableInteractionSource() },
                                         indication = null,
-                                        onClick = {} // consume — don't propagate to backdrop
-                                    ),
-                                shape = RoundedCornerShape(16.dp),
-                                tonalElevation = 8.dp,
-                                color = MaterialTheme.colorScheme.background
-                            ) {
-                                Column(modifier = Modifier.fillMaxSize()) {
-
-                                    // ── Drag handle + refresh button ──────────────────────
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(36.dp)
-                                            .pointerInput(Unit) {
-                                                detectDragGestures(
-                                                    onDragEnd = {
-                                                        repository.savePopupOffset(offsetX, offsetY)
-                                                    }
-                                                ) { change, dragAmount ->
-                                                    change.consume()
-                                                    offsetX += dragAmount.x.toDp().value
-                                                    offsetY += dragAmount.y.toDp().value
-                                                }
-                                            }
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .width(40.dp)
-                                                .height(5.dp)
-                                                .align(Alignment.Center)
-                                                .background(
-                                                    Color.Gray.copy(alpha = 0.6f),
-                                                    RoundedCornerShape(2.5.dp)
-                                                )
-                                        )
-                                        // ── Lock/Unlock tap-outside behaviour + Close ────
-                                        Row(
-                                            modifier = Modifier
-                                                .align(Alignment.CenterStart)
-                                                .padding(start = 6.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            IconButton(
-                                                onClick = {
-                                                    if (dismissOnTapOutside) {
-                                                        // Wants to lock (interact with apps underneath)
-                                                        if (!Settings.canDrawOverlays(this@ShareActivity)) {
-                                                            Toast.makeText(
-                                                                this@ShareActivity,
-                                                                "برای تعامل با سایر برنامه‌ها در حالت قفل، لطفاً دسترسی «نمایش روی سایر برنامه‌ها» را فعال کنید",
-                                                                Toast.LENGTH_LONG
-                                                            ).show()
-                                                            startActivity(
-                                                                Intent(
-                                                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                                                    Uri.parse("package:$packageName")
-                                                                )
-                                                            )
-                                                        } else {
-                                                            repository.savePopupSize(widthDp, heightDp)
-                                                            repository.savePopupOffset(offsetX, offsetY)
-                                                            repository.setDismissOnTapOutside(false)
-                                                            FloatingOverlayService.start(this@ShareActivity, sharedText)
-                                                            finish()
-                                                        }
-                                                    } else {
-                                                        dismissOnTapOutside = true
-                                                        repository.setDismissOnTapOutside(true)
-                                                    }
-                                                },
-                                                modifier = Modifier.size(28.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = if (dismissOnTapOutside)
-                                                        Icons.Default.LockOpen
-                                                    else
-                                                        Icons.Default.Lock,
-                                                    contentDescription = if (dismissOnTapOutside)
-                                                        "بستن با کلیک خارج: فعال"
-                                                    else
-                                                        "بستن با کلیک خارج: غیرفعال",
-                                                    tint = if (dismissOnTapOutside)
-                                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                                    else
-                                                        MaterialTheme.colorScheme.primary
-                                                )
-                                            }
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            IconButton(
-                                                onClick = {
-                                                    repository.savePopupSize(widthDp, heightDp)
-                                                    repository.savePopupOffset(offsetX, offsetY)
-                                                    PopupWebViewCache.selectedTabIndex = selectedTabIndex
-                                                    finish()
-                                                },
-                                                modifier = Modifier.size(28.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Close,
-                                                    contentDescription = "Close",
-                                                    tint = MaterialTheme.colorScheme.error
-                                                )
-                                            }
-                                        }
-                                        IconButton(
-                                            onClick = {
-                                                // Navigate to the ORIGINAL registered URL, not the
-                                                // current page (i.e. not window.location.reload()).
-                                                // Clipboard links → base URL as typed in the app.
-                                                // Search links    → search URL with current text.
-                                                val link = openedLinks?.getOrNull(selectedTabIndex)
-                                                val wv   = webViewRefs[selectedTabIndex]
-                                                if (link != null && wv != null) {
-                                                    val refreshUrl = if (link.urlTemplate.contains("%s")) {
-                                                        // Re-use the computed search URL
-                                                        targetUrls?.getOrNull(selectedTabIndex)
-                                                            ?: link.urlTemplate
-                                                    } else {
-                                                        // Return to the base URL as registered
-                                                        link.urlTemplate
-                                                    }
-                                                    wv.loadUrl(refreshUrl)
-                                                    wv.tag = refreshUrl
-                                                }
-                                            },
-                                            modifier = Modifier
-                                                .align(Alignment.CenterEnd)
-                                                .padding(end = 8.dp)
-                                                .size(28.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Refresh,
-                                                contentDescription = "Refresh",
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    }
-
-                                    // ── Tab row (multi-tab only) ──────────────────────────
-                                    if (targetUrls!!.size > 1) {
-                                        ScrollableTabRow(
-                                            selectedTabIndex = selectedTabIndex,
-                                            edgePadding = 8.dp,
-                                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                            modifier = Modifier.height(48.dp)
-                                        ) {
-                                            targetUrls!!.forEachIndexed { index, _ ->
-                                                val label = openedLinks?.getOrNull(index)?.name
-                                                    ?: "Tab ${index + 1}"
-                                                Tab(
-                                                    selected = selectedTabIndex == index,
-                                                    onClick = {
-                                                        selectedTabIndex = index
-                                                        PopupWebViewCache.selectedTabIndex = index
-                                                    },
-                                                    text = {
-                                                        Text(
-                                                            label,
-                                                            style = MaterialTheme.typography.labelMedium
-                                                        )
-                                                    }
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    // ── WebView panes ─────────────────────────────────────
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxSize()
-                                    ) {
-                                        targetUrls!!.forEachIndexed { index, url ->
-                                            val isVisible      = selectedTabIndex == index
-                                            val linkModel      = openedLinks?.getOrNull(index)
-                                            val isClipboard    = linkModel != null &&
-                                                    !linkModel.urlTemplate.contains("%s")
-                                            val linkId         = linkModel?.id ?: ""
-
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .alpha(if (isVisible) 1f else 0f)
-                                                    .zIndex(if (isVisible) 1f else 0f)
-                                            ) {
-                                                AndroidView(
-                                                    modifier = Modifier.fillMaxSize(),
-                                                    factory = { ctx ->
-                                                        // ── Reuse cached WebView when available ──────
-                                                        // The cached WebView was detached from the old
-                                                        // Activity's hierarchy when finish() was called.
-                                                        // Removing it from any residual parent is a
-                                                        // safety net; then Compose can attach it here.
-                                                        val cached = PopupWebViewCache.webViews[index]
-                                                        if (cached != null) {
-                                                            (cached.parent as? ViewGroup)?.removeView(cached)
-                                                            webViewRefs[index] = cached
-                                                            cached  // full page state is preserved ✓
-                                                        } else {
-                                                            WebViewHelper.buildWebView(
-                                                                ctx, index, url,
-                                                                isClipboard, linkId, webViewRefs, repository
-                                                            )
-                                                        }
-                                                    },
-                                                    update = { webView ->
-                                                        webViewRefs[index] = webView
-                                                        // Clipboard → never auto-reload
-                                                        // Search    → reload when URL (text) changes
-                                                        if (!isClipboard && webView.tag != url) {
-                                                            webView.loadUrl(url)
-                                                            webView.tag = url
-                                                        }
-                                                    }
-                                                )
-                                            }
-                                        }
-
-                                        // ── Resize handle (bottom-right) ──────────────────
-                                        Box(
-                                            modifier = Modifier
-                                                .align(Alignment.BottomEnd)
-                                                .size(36.dp)
-                                                .zIndex(2f)
-                                                .background(
-                                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                                    RoundedCornerShape(topStart = 16.dp, bottomEnd = 16.dp)
-                                                )
-                                                .pointerInput(Unit) {
-                                                    detectDragGestures(
-                                                        onDragEnd = {
-                                                            repository.savePopupSize(widthDp, heightDp)
-                                                        }
-                                                    ) { change, dragAmount ->
-                                                        change.consume()
-                                                        widthDp  = (widthDp  + dragAmount.x.toDp().value).coerceAtLeast(200f)
-                                                        heightDp = (heightDp + dragAmount.y.toDp().value).coerceAtLeast(200f)
-                                                    }
-                                                },
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text("⤡", color = Color.White)
-                                        }
-                                    }
-                                }
-                            }
+                                        onClick = {} // Don't propagate to backdrop
+                                    )
+                            )
+                        }
+                    } else {
+                        // Locked mode: window bounds match popup, touches outside pass through to other apps
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            PopupContent(
+                                containerModifier = Modifier.fillMaxSize()
+                            )
                         }
                     }
                 }
             }
         }
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Intent handling
-    // ─────────────────────────────────────────────────────────────────────────
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -589,10 +634,6 @@ class ShareActivity : ComponentActivity() {
             intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
         else -> null
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Helpers
-    // ─────────────────────────────────────────────────────────────────────────
 
     private fun copyToClipboard(text: String) {
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
