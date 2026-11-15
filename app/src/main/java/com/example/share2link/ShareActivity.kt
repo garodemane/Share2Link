@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
@@ -23,6 +24,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Refresh
@@ -73,6 +75,14 @@ class ShareActivity : ComponentActivity() {
         }
 
         handleIntent(intent)
+
+        // If locked mode is enabled and overlay permission is granted, launch true floating overlay
+        if (!repository.isDismissOnTapOutsideEnabled() && Settings.canDrawOverlays(this)) {
+            val text = sharedTextState.value
+            FloatingOverlayService.start(this, text)
+            finish()
+            return
+        }
 
         setContent {
             Share2LinkTheme {
@@ -329,32 +339,74 @@ class ShareActivity : ComponentActivity() {
                                                     RoundedCornerShape(2.5.dp)
                                                 )
                                         )
-                                        // ── Lock/Unlock tap-outside behaviour ────────────
-                                        IconButton(
-                                            onClick = {
-                                                val next = !dismissOnTapOutside
-                                                dismissOnTapOutside = next
-                                                repository.setDismissOnTapOutside(next)
-                                            },
+                                        // ── Lock/Unlock tap-outside behaviour + Close ────
+                                        Row(
                                             modifier = Modifier
                                                 .align(Alignment.CenterStart)
-                                                .padding(start = 8.dp)
-                                                .size(28.dp)
+                                                .padding(start = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Icon(
-                                                imageVector = if (dismissOnTapOutside)
-                                                    Icons.Default.LockOpen
-                                                else
-                                                    Icons.Default.Lock,
-                                                contentDescription = if (dismissOnTapOutside)
-                                                    "بستن با کلیک خارج: فعال"
-                                                else
-                                                    "بستن با کلیک خارج: غیرفعال",
-                                                tint = if (dismissOnTapOutside)
-                                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                                else
-                                                    MaterialTheme.colorScheme.primary
-                                            )
+                                            IconButton(
+                                                onClick = {
+                                                    if (dismissOnTapOutside) {
+                                                        // Wants to lock (interact with apps underneath)
+                                                        if (!Settings.canDrawOverlays(this@ShareActivity)) {
+                                                            Toast.makeText(
+                                                                this@ShareActivity,
+                                                                "برای تعامل با سایر برنامه‌ها در حالت قفل، لطفاً دسترسی «نمایش روی سایر برنامه‌ها» را فعال کنید",
+                                                                Toast.LENGTH_LONG
+                                                            ).show()
+                                                            startActivity(
+                                                                Intent(
+                                                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                                                    Uri.parse("package:$packageName")
+                                                                )
+                                                            )
+                                                        } else {
+                                                            repository.savePopupSize(widthDp, heightDp)
+                                                            repository.savePopupOffset(offsetX, offsetY)
+                                                            repository.setDismissOnTapOutside(false)
+                                                            FloatingOverlayService.start(this@ShareActivity, sharedText)
+                                                            finish()
+                                                        }
+                                                    } else {
+                                                        dismissOnTapOutside = true
+                                                        repository.setDismissOnTapOutside(true)
+                                                    }
+                                                },
+                                                modifier = Modifier.size(28.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (dismissOnTapOutside)
+                                                        Icons.Default.LockOpen
+                                                    else
+                                                        Icons.Default.Lock,
+                                                    contentDescription = if (dismissOnTapOutside)
+                                                        "بستن با کلیک خارج: فعال"
+                                                    else
+                                                        "بستن با کلیک خارج: غیرفعال",
+                                                    tint = if (dismissOnTapOutside)
+                                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                                    else
+                                                        MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            IconButton(
+                                                onClick = {
+                                                    repository.savePopupSize(widthDp, heightDp)
+                                                    repository.savePopupOffset(offsetX, offsetY)
+                                                    PopupWebViewCache.selectedTabIndex = selectedTabIndex
+                                                    finish()
+                                                },
+                                                modifier = Modifier.size(28.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Close,
+                                                    contentDescription = "Close",
+                                                    tint = MaterialTheme.colorScheme.error
+                                                )
+                                            }
                                         }
                                         IconButton(
                                             onClick = {
@@ -451,9 +503,9 @@ class ShareActivity : ComponentActivity() {
                                                             webViewRefs[index] = cached
                                                             cached  // full page state is preserved ✓
                                                         } else {
-                                                            buildWebView(
+                                                            WebViewHelper.buildWebView(
                                                                 ctx, index, url,
-                                                                isClipboard, linkId, webViewRefs
+                                                                isClipboard, linkId, webViewRefs, repository
                                                             )
                                                         }
                                                     },
@@ -502,101 +554,6 @@ class ShareActivity : ComponentActivity() {
                     }
                 }
             }
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Build a brand-new WebView and register it in the cache
-    // ─────────────────────────────────────────────────────────────────────────
-    private fun buildWebView(
-        context: Context,
-        index: Int,
-        url: String,
-        isClipboard: Boolean,
-        linkId: String,
-        webViewRefs: MutableMap<Int, WebView>
-    ): WebView {
-        // Use applicationContext so these closures do not prevent the current
-        // Activity from being garbage-collected after finish() is called.
-        val repo = repository
-
-        return WebView(context.applicationContext).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            // Remove the WebView marker so sites treat this like a normal browser.
-            settings.userAgentString = settings.userAgentString.replace("; wv", "")
-            // Required for Google Sign-In and other OAuth popup windows.
-            settings.setSupportMultipleWindows(true)
-            settings.javaScriptCanOpenWindowsAutomatically = true
-
-            CookieManager.getInstance().setAcceptCookie(true)
-            CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-
-            webViewClient = object : WebViewClient() {
-                override fun shouldOverrideUrlLoading(
-                    view: WebView?,
-                    request: WebResourceRequest?
-                ): Boolean = false   // follow all redirects (OAuth, etc.)
-
-                override fun onPageFinished(view: WebView?, pageUrl: String?) {
-                    super.onPageFinished(view, pageUrl)
-                    // Persist the current URL for clipboard links.
-                    // On the next session the popup will open directly to this page.
-                    if (isClipboard && !pageUrl.isNullOrBlank() && pageUrl != "about:blank") {
-                        repo.saveLastWebViewUrl(linkId, pageUrl)
-                    }
-                }
-            }
-
-            webChromeClient = object : WebChromeClient() {
-                // Handle popup windows opened by JS (Google Sign-In, OAuth, etc.)
-                override fun onCreateWindow(
-                    view: WebView?,
-                    isDialog: Boolean,
-                    isUserGesture: Boolean,
-                    resultMsg: android.os.Message?
-                ): Boolean {
-                    if (view == null || resultMsg == null) return false
-                    val popup = WebView(context.applicationContext).apply {
-                        settings.javaScriptEnabled = true
-                        settings.domStorageEnabled = true
-                        settings.userAgentString = settings.userAgentString.replace("; wv", "")
-                        settings.setSupportMultipleWindows(true)
-                        CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                        webViewClient = object : WebViewClient() {
-                            override fun shouldOverrideUrlLoading(
-                                v: WebView?,
-                                request: WebResourceRequest?
-                            ): Boolean = false
-                        }
-                        webChromeClient = object : WebChromeClient() {
-                            override fun onCloseWindow(window: WebView?) {
-                                view.removeView(window)
-                            }
-                        }
-                    }
-                    view.addView(
-                        popup,
-                        ViewGroup.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.MATCH_PARENT
-                        )
-                    )
-                    val transport = resultMsg.obj as? WebView.WebViewTransport
-                    transport?.webView = popup
-                    resultMsg.sendToTarget()
-                    return true
-                }
-            }
-
-            loadUrl(url)
-            tag = url
-            webViewRefs[index] = this
-            PopupWebViewCache.webViews[index] = this  // keep alive across Activity recreation
         }
     }
 
