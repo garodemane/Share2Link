@@ -85,7 +85,7 @@ fun MainScreen(repository: LinkRepository, modifier: Modifier = Modifier) {
             ExtendedFloatingActionButton(
                 onClick = { showAddDialog = true },
                 icon = { Icon(Icons.Default.Add, contentDescription = "Add Link") },
-                text = { Text("لینک جدید", fontWeight = FontWeight.SemiBold) },
+                text = { Text("Add Link", fontWeight = FontWeight.SemiBold) },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
                 shape = RoundedCornerShape(16.dp)
@@ -169,7 +169,7 @@ fun MainScreen(repository: LinkRepository, modifier: Modifier = Modifier) {
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            "تنظیمات نمایش و رفتار",
+                            "Display & Behavior Settings",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Bold
@@ -199,8 +199,8 @@ fun MainScreen(repository: LinkRepository, modifier: Modifier = Modifier) {
                                 }
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column {
-                                    Text("حالت مالتی‌تب (Multi-Tab)", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                                    Text("جستجوی متن در همه لینک‌ها هم‌زمان", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("Multi-Tab Mode", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                    Text("Open and search all links simultaneously in separate tabs", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                             Switch(
@@ -240,8 +240,8 @@ fun MainScreen(repository: LinkRepository, modifier: Modifier = Modifier) {
                                 }
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column {
-                                    Text("پاپ‌آپ شناور (Floating Pop-up)", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                                    Text("نمایش پنجره شناور بدون بستن برنامه فعلی", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("Floating Pop-up", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                    Text("Open as a floating popup without leaving your current app", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                             Switch(
@@ -266,13 +266,13 @@ fun MainScreen(repository: LinkRepository, modifier: Modifier = Modifier) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        "لینک‌های ثبت شده (${links.size})",
+                        "Configured Links (${links.size})",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        "برای تغییر اولویت نگه دارید",
+                        "Hold and drag to reorder",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -305,13 +305,13 @@ fun MainScreen(repository: LinkRepository, modifier: Modifier = Modifier) {
                             }
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                "هیچ لینکی ثبت نشده است",
+                                "No links configured yet",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                "با دکمه زیر اولین لینک خود را اضافه کنید",
+                                "Tap '+ Add Link' below to add your first service",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -461,7 +461,7 @@ fun MainScreen(repository: LinkRepository, modifier: Modifier = Modifier) {
                     }
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        if (isEditing) "ویرایش لینک" else "افزودن لینک جدید",
+                        if (isEditing) "Edit Link" else "Add New Link",
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.titleMedium
                     )
@@ -472,7 +472,7 @@ fun MainScreen(repository: LinkRepository, modifier: Modifier = Modifier) {
                     OutlinedTextField(
                         value = name,
                         onValueChange = { name = it },
-                        label = { Text("نام سرویس (مثلاً Google یا ChatGPT)") },
+                        label = { Text("Service Name (e.g. Google, ChatGPT)") },
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
@@ -481,10 +481,10 @@ fun MainScreen(repository: LinkRepository, modifier: Modifier = Modifier) {
                     OutlinedTextField(
                         value = url,
                         onValueChange = { url = it },
-                        label = { Text("آدرس (URL Template)") },
+                        label = { Text("URL Template") },
                         supportingText = {
                             Text(
-                                "برای جستجوی خودکار از %s استفاده کنید (مانند https://google.com/search?q=%s). برای سایت‌هایی مثل ChatGPT آدرس عادی را وارد کنید.",
+                                "Use %s where search query should be inserted (e.g. https://google.com/search?q=%s). For standard websites like ChatGPT, enter the normal URL.",
                                 style = MaterialTheme.typography.bodySmall
                             )
                         },
@@ -509,7 +509,7 @@ fun MainScreen(repository: LinkRepository, modifier: Modifier = Modifier) {
                     },
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("ذخیره", fontWeight = FontWeight.Bold)
+                    Text("Save", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -520,7 +520,7 @@ fun MainScreen(repository: LinkRepository, modifier: Modifier = Modifier) {
                     },
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("انصراف")
+                    Text("Cancel")
                 }
             }
         )

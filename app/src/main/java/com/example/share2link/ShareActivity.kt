@@ -211,7 +211,7 @@ class ShareActivity : ComponentActivity() {
                             copyToClipboard(sharedText)
                             Toast.makeText(
                                 this@ShareActivity,
-                                "متن جدید کپی شد! در صفحه باز شده آن را Paste کنید.",
+                                "New text copied to clipboard! Paste it into the page.",
                                 Toast.LENGTH_LONG
                             ).show()
                         }
@@ -236,7 +236,7 @@ class ShareActivity : ComponentActivity() {
                         copyToClipboard(sharedText)
                         Toast.makeText(
                             this@ShareActivity,
-                            "متن کپی شد! در صفحه باز شده آن را Paste کنید.",
+                            "Text copied to clipboard! Paste it into the page.",
                             Toast.LENGTH_LONG
                         ).show()
                     }
@@ -345,9 +345,9 @@ class ShareActivity : ComponentActivity() {
                                                 dismissOnTapOutside = newDismiss
                                                 repository.setDismissOnTapOutside(newDismiss)
                                                 val msg = if (newDismiss) {
-                                                    "حالت عادی: با کلیک بیرون، پاپ‌آپ بسته می‌شود"
+                                                    "Normal mode: tapping outside closes popup"
                                                 } else {
-                                                    "حالت قفل: پاپ‌آپ ثابت می‌ماند و می‌توانید با برنامه‌های زیرین کار کنید"
+                                                    "Locked mode: popup stays pinned to interact with background apps"
                                                 }
                                                 Toast.makeText(this@ShareActivity, msg, Toast.LENGTH_SHORT).show()
                                             },
@@ -364,9 +364,9 @@ class ShareActivity : ComponentActivity() {
                                                 else
                                                     Icons.Default.Lock,
                                                 contentDescription = if (dismissOnTapOutside)
-                                                    "بستن با کلیک خارج: فعال"
+                                                    "Close on outside tap: enabled"
                                                 else
-                                                    "بستن با کلیک خارج: غیرفعال",
+                                                    "Close on outside tap: disabled",
                                                 tint = if (dismissOnTapOutside)
                                                     MaterialTheme.colorScheme.onSurfaceVariant
                                                 else
@@ -619,7 +619,7 @@ class ShareActivity : ComponentActivity() {
     private fun handleIntent(intent: Intent?) {
         val text = extractTextFromIntent(intent)
         if (text.isNullOrBlank()) {
-            Toast.makeText(this, "متنی یافت نشد", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "No text found", Toast.LENGTH_SHORT).show()
             finish()
             return
         }
@@ -647,7 +647,7 @@ class ShareActivity : ComponentActivity() {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
         } catch (e: Exception) {
-            Toast.makeText(this, "خطا در باز کردن لینک: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Error opening link: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 }
