@@ -23,6 +23,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -114,6 +116,11 @@ class ShareActivity : ComponentActivity() {
                 var heightDp by remember { mutableStateOf(repository.getPopupHeight()) }
                 var offsetX  by remember { mutableStateOf(repository.getPopupOffsetX()) }
                 var offsetY  by remember { mutableStateOf(repository.getPopupOffsetY()) }
+
+                // ── Dismiss-on-tap-outside toggle ─────────────────────────────
+                var dismissOnTapOutside by remember {
+                    mutableStateOf(repository.isDismissOnTapOutsideEnabled())
+                }
 
                 // ── Keyboard-reactive popup height ────────────────────────────────
                 // When the soft keyboard opens over a translucent full-screen window,
@@ -234,10 +241,12 @@ class ShareActivity : ComponentActivity() {
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                             onClick = {
-                                repository.savePopupSize(widthDp, heightDp)
-                                repository.savePopupOffset(offsetX, offsetY)
-                                PopupWebViewCache.selectedTabIndex = selectedTabIndex
-                                finish()   // safe — WebViews stay alive in PopupWebViewCache
+                                if (dismissOnTapOutside) {
+                                    repository.savePopupSize(widthDp, heightDp)
+                                    repository.savePopupOffset(offsetX, offsetY)
+                                    PopupWebViewCache.selectedTabIndex = selectedTabIndex
+                                    finish()   // safe — WebViews stay alive in PopupWebViewCache
+                                }
                             }
                         )
                 ) {
@@ -320,6 +329,33 @@ class ShareActivity : ComponentActivity() {
                                                     RoundedCornerShape(2.5.dp)
                                                 )
                                         )
+                                        // ── Lock/Unlock tap-outside behaviour ────────────
+                                        IconButton(
+                                            onClick = {
+                                                val next = !dismissOnTapOutside
+                                                dismissOnTapOutside = next
+                                                repository.setDismissOnTapOutside(next)
+                                            },
+                                            modifier = Modifier
+                                                .align(Alignment.CenterStart)
+                                                .padding(start = 8.dp)
+                                                .size(28.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = if (dismissOnTapOutside)
+                                                    Icons.Default.LockOpen
+                                                else
+                                                    Icons.Default.Lock,
+                                                contentDescription = if (dismissOnTapOutside)
+                                                    "بستن با کلیک خارج: فعال"
+                                                else
+                                                    "بستن با کلیک خارج: غیرفعال",
+                                                tint = if (dismissOnTapOutside)
+                                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                                else
+                                                    MaterialTheme.colorScheme.primary
+                                            )
+                                        }
                                         IconButton(
                                             onClick = {
                                                 // Navigate to the ORIGINAL registered URL, not the

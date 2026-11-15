@@ -127,4 +127,12 @@ class LinkRepository(context: Context) {
     fun getLastWebViewUrl(linkId: String): String? {
         return prefs.getString("last_url_$linkId", null)
     }
+
+    /** Whether tapping outside the popup should close it (default: true). */
+    fun isDismissOnTapOutsideEnabled(): Boolean =
+        prefs.getBoolean("dismiss_on_tap_outside", true)
+
+    fun setDismissOnTapOutside(enabled: Boolean) {
+        prefs.edit().putBoolean("dismiss_on_tap_outside", enabled).apply()
+    }
 }
