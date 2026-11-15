@@ -20,13 +20,6 @@
 3. **Share & Go**: Highlight any text in *any* app (like WhatsApp, Chrome, or a PDF reader), press **Share**, and select **Share2Link**. 
 4. **View Results**: The floating browser will instantly pop up with your searched results. If Multi-Tab is enabled, all your links will open in separate background tabs simultaneously!
 
-## 📥 Download Release
-
-You can download the latest pre-built APK directly from the [release folder](release/Share2Link-v1.2.apk) or GitHub Releases.
-
-- **Current Version**: v1.2 (Code: 3)
-- **Direct APK**: [Download Share2Link-v1.2.apk](release/Share2Link-v1.2.apk)
-
 ---
 
 # Share2Link 🚀 (توضیحات فارسی)
@@ -47,10 +40,3 @@ You can download the latest pre-built APK directly from the [release folder](rel
 ۲. **اولویت‌بندی**: با لمس طولانی روی لینک‌ها، آن‌ها را به ترتیب دلخواهتان بچینید.
 ۳. **اشتراک‌گذاری**: داخل هر برنامه‌ای (مثل تلگرام، کروم، کتاب‌خوان و...) یک متن را انتخاب (Highlight) کنید، دکمه **Share** را بزنید و **Share2Link** را انتخاب کنید.
 ۴. **مشاهده نتایج**: مرورگر شناور بلافاصله باز شده و نتیجه را به شما نشان می‌دهد. اگر حالت مالتی‌تب روشن باشد، تمام سایت‌های شما همزمان در تب‌های مختلف آماده مشاهده هستند!
-
-## 📥 دانلود نسخه منتشر شده
-
-می‌توانید آخرین فایل نصبی برنامه را مستقیماً دریافت و نصب کنید:
-
-- **نسخه فعلی**: 1.2
-- **لینک مستقیم فایل نصبی**: [دانلود Share2Link-v1.2.apk](release/Share2Link-v1.2.apk)
